@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ja"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b1020">
-<title>MLBB Counter Lab v5.0 · 全133体 · 強くなる条件｜相手キャラからカウンターを探す</title>
+<title>MLBB Counter Lab v6.0 · 全133体 · 強くなる条件｜相手キャラからカウンターを探す</title>
 <style>
 :root{color-scheme:dark;--bg:#0b1020;--panel:#171f34;--surface:#111a2d;--text:#f3f7ff;--muted:#aab9d2;--gold:#ffd28a;--mint:#8ff0d7;--line:#34415d}
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(ellipse 890px 660px at 5% -5%,#25395d 0,transparent 70%),var(--bg);color:var(--text);font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -61,11 +61,11 @@ main,header{width:min(980px,calc(100% - 36px));margin:0 auto}header{padding:37px
 @media(max-width:540px){.researchPanel{padding:10px}}
 </style>
 </head><body>
-<header><div class="top"><div class="eyebrow">MOBILE LEGENDS · COUNTER LAB</div><span class="pill">v5.0 · 全133体 · 2026.11.24</span></div>
+<header><div class="top"><div class="eyebrow">MOBILE LEGENDS · COUNTER LAB</div><span class="pill">v6.0 · 全133体 · 2026.11.24</span></div>
 <h1>相手がこのキャラなら、<br><span class="accent">何を出せばいい？</span></h1>
 <p>相手キャラを選ぶだけ。全133体から検索でき、同レーンを優先してカウンター候補を表示。アーリー・バランス・レイトに加えて、Lv.4・コア装備完成などの強化タイミングも確認できます。</p>
 <div class="stats"><span class="stat" id="heroStat"></span><span class="stat" id="pairStat"></span><span class="stat">オフラインでも検索OK</span></div>
-</header><main>
+</header><main><section class="panel" id="draft" style="margin-bottom:22px"><div class="eyebrow">NEW / DRAFT ASSIST</div><h2>ドラフトアシスト</h2><p class="muted">自分のロールを選び、敵のピックを追加。登録済み相性と時間帯から候補を探します。</p><div id="draftRoles" class="examples"></div><div class="chooser" style="margin-top:14px"><div class="field"><label for="draftEnemy">敵のピック（最大5体）</label><input class="control" id="draftEnemy" list="heroSuggestions" placeholder="日本語名・英語名"></div><button class="go" id="draftAdd">追加</button></div><select class="control" id="draftList" style="margin-top:8px" aria-label="敵ヒーロー一覧"><option value="">一覧から選択</option></select><div id="draftSelected" class="examples"></div><div id="draftNotice" class="muted" aria-live="polite"></div><div id="draftResults" style="margin-top:15px" aria-live="polite"></div><p class="small muted">順位は戦術上の目安。未登録の相性は不明であり、互角とは限りません。時間帯分類は試合時間別勝率傾向です。</p></section>
 <section class="panel" aria-label="相手ヒーローを選択">
 <div class="field"><label for="enemy">相手のヒーローを探す</label><div class="chooser"><input class="control" id="enemy" list="heroSuggestions" autocomplete="off" placeholder="例：ベルリック、ラズリー、イクシア" aria-describedby="searchHint"><button type="button" class="go" id="searchBtn">検索</button></div><datalist id="heroSuggestions"></datalist></div>
 <div class="small muted" id="searchHint" style="margin-top:14px">日本語名で表示。英語名・旧表記でも検索OK。相手の主流ロールで絞り込めます。</div>
@@ -280,4 +280,29 @@ const datalist=document.getElementById('heroSuggestions');sorted.forEach(h=>{let
 document.getElementById('heroStat').textContent=`対応：${DATA.length}体`;
 document.getElementById('pairStat').textContent=`カウンター：${DATA.reduce((s,h)=>s+getPrioritizedPicks(h).allCount,0)}組`;
 renderRoles();renderQuick();choose(selected);
+
+const draftRoles=['Roam','EXP','Mid','Gold','JG'];let draftRole='Roam',draftIds=[];
+const $d=id=>document.getElementById(id);
+function draftPairs(h){const m=new Map();for(const p of h.counters)m.set(p.id,{...p,evidence:p.evidence||'measured'});for(const p of SAME_LANE_EXTRAS[h.id]||[]){if(!m.has(p.id)||m.get(p.id).evidence!=='measured')m.set(p.id,p);}return m;}
+const draftMaps=new Map(DATA.map(h=>[h.id,draftPairs(h)]));
+function draftRender(){
+$d('draftRoles').innerHTML=draftRoles.map(r=>`<button class="rolechip ${r===draftRole?'active':''}" data-r="${r}" aria-pressed="${r===draftRole}">${ROLE_JP[r]}</button>`).join('');
+$d('draftSelected').innerHTML=draftIds.map(id=>`<button class="quick" data-remove="${esc(id)}">${esc(JP[id]||id)} ×</button>`).join('')+(draftIds.length?'<button class="quick" data-reset="1">全解除</button>':'');
+const enemies=draftIds.map(id=>DATA.find(h=>h.id===id));
+if(!enemies.length){$d('draftResults').innerHTML='<p class="muted">敵キャラを追加すると候補が表示されます。</p>';return;}
+const late=enemies.filter(e=>powerOf(e.id)==='late'),early=enemies.filter(e=>powerOf(e.id)==='early');
+let rows=DATA.filter(h=>h.role===draftRole&&!draftIds.includes(h.id)).map(h=>{let hits=[],risks=[];let score=0;for(const e of enemies){const p=draftMaps.get(e.id).get(h.id),rev=draftMaps.get(h.id).get(e.id);if(p){hits.push({e,p});score+=(p.evidence==='measured'&&p.delta!=null?6:3)*(e.role===draftRole?2:1);}if(rev){risks.push({e,p:rev});score-=(rev.evidence==='measured'&&rev.delta!=null?6:3)*(e.role===draftRole?2:1);}}let phase=powerOf(h.id);let fallback=phase==='early'&&late.length?2:phase==='balanced'&&early.length?1:0;return {h,hits,risks,score,fallback};});
+let direct=rows.filter(r=>r.hits.length).sort((a,b)=>b.score-a.score||b.fallback-a.fallback||a.h.jp.localeCompare(b.h.jp,'ja'));
+let alt=rows.filter(r=>!r.hits.length&&!r.risks.length&&r.fallback).sort((a,b)=>b.fallback-a.fallback||a.h.jp.localeCompare(b.h.jp,'ja'));
+const card=(r,kind)=>`<article class="card" style="margin-top:10px"><div class="cardhead"><div><div class="tag">${kind}</div><div class="heroname">${esc(r.h.jp)}</div></div>${stageTag(r.h.id)}</div>${milestoneBadges(r.h.id)}${r.hits.map(({e,p})=>`<div><b>${esc(e.jp)}への対策 · ${e.role===draftRole?'同レーン':'他レーン'} · ${p.evidence==='measured'&&p.delta!=null?'統計収録':'参考相性・未検証'}</b><p class="description">${esc(EXTRA_TIPS[e.id+'|'+r.h.id]||TIPS[e.id+'|'+r.h.id]||genericTip(e,r.h))}</p>${researchPanel(e,p)}<a class="sourcelink" href="${esc(p.source||e.source)}" target="_blank" rel="noopener">参照元</a></div>`).join('')}${r.risks.length?`<p style="color:#ffd28a">注意：${r.risks.map(({e,p})=>esc(e.jp)+(p.evidence==='measured'&&p.delta!=null?'（統計収録）':'（参考相性）')).join('、')} は逆方向のカウンターにも登録されています。</p>`:''}${!r.hits.length?`<p>${powerOf(r.h.id)==='early'?'序盤のウェーブ・視界・オブジェクトでレイト型の育成を遅らせる。':'序盤の無理な交戦を避け、味方と守りながら中盤以降へつなぐ。'} 個別対面の有利は未確認。</p>`:''}<div class="small muted">相性登録：${r.hits.length}/${enemies.length}体 · 逆方向登録：${r.risks.length}体 · 未登録の敵への有利不利は不明</div></article>`;
+let uncovered=enemies.filter(e=>!direct.some(r=>r.hits.some(x=>x.e.id===e.id)));
+$d('draftResults').innerHTML=`<h3>おすすめ候補</h3><p class="small muted">${ROLE_JP[draftRole]} / 敵${enemies.length}体 / 同レーンの相性を重く評価</p>${direct.length?direct.slice(0,6).map(r=>card(r,'登録済みカウンター候補')).join(''):'<p>選択ロールに登録済みの直接カウンター候補はありません。</p>'}${uncovered.length?`<p class="muted">選択ロールで相性未登録：${uncovered.map(e=>esc(e.jp)).join('、')}</p>`:''}${alt.length&&(!direct.length||uncovered.length)?'<h3 style="margin-top:16px">時間帯による代替候補</h3><p class="small muted">直接カウンターではありません。同分類内は五十音順。</p>'+alt.slice(0,6).map(r=>card(r,'戦術的な代替案')).join(''):(!direct.length?'<p class="muted">時間帯だけでは候補を絞れません。熟練度・味方構成を優先してください。</p>':'')}`;
+}
+function draftAdd(id){const h=DATA.find(h=>h.id===id);if(!h){$d('draftNotice').textContent='ヒーロー名を確認してください。';return;}if(draftIds.includes(id)||draftIds.length>=5){$d('draftNotice').textContent='重複または5体の上限です。';return;}draftIds.push(id);$d('draftEnemy').value='';$d('draftList').value='';$d('draftNotice').textContent='';draftRender();}
+$d('draftRoles').onclick=e=>{let r=e.target.dataset.r;if(r){draftRole=r;draftRender();}};
+$d('draftSelected').onclick=e=>{if(e.target.dataset.reset)draftIds=[];else if(e.target.dataset.remove)draftIds=draftIds.filter(id=>id!==e.target.dataset.remove);else return;$d('draftNotice').textContent='';draftRender();};
+$d('draftAdd').onclick=()=>draftAdd(findHero($d('draftEnemy').value)?.id);
+$d('draftEnemy').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();$d('draftAdd').click();}};
+$d('draftList').innerHTML+=[...sorted].map(h=>`<option value="${esc(h.id)}">${esc(h.jp)} / ${ROLE_JP[h.role]}</option>`).join('');
+$d('draftList').onchange=e=>{if(e.target.value)draftAdd(e.target.value);};draftRender();
 </script></body></html>
